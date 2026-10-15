@@ -39,7 +39,7 @@ class WalletUiTest {
     private fun screenshot(name: String) {
         rule.waitForIdle()
         val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        val folder = File(rule.activity.getExternalFilesDir(null), "notification-update").apply { mkdirs() }
+        val folder = File(rule.activity.getExternalFilesDir(null), "floating-navigation").apply { mkdirs() }
         File(folder, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Test fun assetsTransactionsAndManualEntry() {
@@ -52,6 +52,9 @@ class WalletUiTest {
         rule.waitUntil(10_000) { rule.onAllNodesWithText("已载入示例账本").fetchSemanticsNodes().isEmpty() }
         rule.onNodeWithText("招商银行").assertIsDisplayed()
         screenshot("assets")
+        rule.onNodeWithText("资产", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNode(hasScrollAction()).performTouchInput { swipeUp(startY = centerY, endY = centerY - height * .2f) }
+        screenshot("assets-scrolled")
         rule.onNodeWithText("收支", useUnmergedTree = true).performClick()
         rule.onNodeWithText("收支明细").assertIsDisplayed()
         screenshot("transactions")

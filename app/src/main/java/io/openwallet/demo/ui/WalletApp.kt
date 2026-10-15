@@ -20,10 +20,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +54,9 @@ private val Expense = Color(0xFFB76B4D)
     var candidate by remember { mutableStateOf<Entry?>(null) }
     var postedNotification by remember { mutableStateOf<Entry?>(null) }
     val snack = remember { SnackbarHostState() }
+    val backdrop = rememberGraphicsLayer()
+    val layoutDirection = LocalLayoutDirection.current
+    var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::import) }
     val exportFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let(vm::export) }
     LaunchedEffect(message) { message?.let { snack.showSnackbar(it); vm.message.value = null } }
@@ -59,16 +69,25 @@ private val Expense = Color(0xFFB76B4D)
             }
         }, actions = { IconButton(onClick = { dialog = "tools" }) { Icon(Icons.Rounded.Tune, "账本工具") } }) },
         bottomBar = {
-            NavigationBar(containerColor = Color.White.copy(alpha = .92f)) {
-                NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Rounded.AccountBalanceWallet, null) }, label = { Text("资产") })
-                NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.AutoMirrored.Rounded.ReceiptLong, null) }, label = { Text("收支") })
-            }
+            FloatingNavigationBar(selectedTab = tab, onTab = { tab = it }, backdrop = backdrop, backdropOrigin = backdropOrigin)
         },
         floatingActionButton = {
             if (state.accounts.isNotEmpty()) ExtendedFloatingActionButton(onClick = { dialog = "entry" }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("记一笔") }, containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
         }
     ) { padding ->
-        Column(Modifier.padding(padding)) {
+        // Let the list scroll behind the floating glass; its trailing padding keeps the last row reachable.
+        Column(Modifier.fillMaxSize().padding(
+            start = padding.calculateStartPadding(layoutDirection),
+            top = padding.calculateTopPadding(),
+            end = padding.calculateEndPadding(layoutDirection),
+            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        )
+            .onGloballyPositioned { backdropOrigin = it.positionInRoot() }
+            .drawWithContent {
+                backdrop.record { this@drawWithContent.drawContent() }
+                drawLayer(backdrop)
+            }
+            .background(MaterialTheme.colorScheme.background)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (state.accounts.isEmpty()) EmptyWallet(onAccount = { dialog = "account" }, onDemo = vm::demo, busy = busy)
             else if (tab == 0) AssetsScreen(state, onAdd = { dialog = "account" }, onEdit = { editAccount = it; dialog = "account" }, onImport = { dialog = "importHelp" }, onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") })
@@ -117,7 +136,7 @@ private val Expense = Color(0xFFB76B4D)
 @Composable private fun AssetsScreen(state: WalletState, onAdd: () -> Unit, onEdit: (Account) -> Unit, onImport: () -> Unit, onExport: () -> Unit) {
     val posted = state.entries.filterNot { it.pending }
     val month = YearMonth.now(); val monthly = posted.filter { YearMonth.from(Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault())) == month }
-    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 180.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         item { Text("我的资产", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
         item { Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(Brush.linearGradient(listOf(Color(0xFF164E3F), Color(0xFF387D62))))) {
             Box(Modifier.align(Alignment.TopEnd).offset(x = 35.dp, y = (-45).dp).size(190.dp).blur(40.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded).background(Color(0xFFB4E8B5).copy(alpha = .25f), CircleShape))
@@ -168,7 +187,7 @@ private val Expense = Color(0xFFB76B4D)
     val visible = monthEntries.filter { filter == "全部" || (filter == "收入") == (it.direction == Direction.INCOME) }
     val expense = monthEntries.filter { it.direction == Direction.EXPENSE }.sumOf { it.amount }
     val income = monthEntries.filter { it.direction == Direction.INCOME }.sumOf { it.amount }
-    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 180.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Text("收支明细", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
         item { Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { monthOffset-- }) { Icon(Icons.Rounded.ChevronLeft, "上个月") }

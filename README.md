@@ -11,11 +11,11 @@
 - **记一笔**：选择账户，填写金额、交易方、分类和时间。
 - **账本工具**：CSV 导入、CSV 导出、通知自动记账设置、Google Sheets 自动导出。
 
-界面采用浅色 Material 3、绿色资产卡和局部柔化渐变、半透明层。主账本保存在应用的 SQLite 数据库中，金额以整数分存储。Google Sheets 默认关闭，授权启用后会上传已入账流水。
+界面采用浅色 Material 3、绿色资产卡和悬浮毛玻璃底部导航。导航栏两侧留白，适配系统导航区；Android 12 及以上实时模糊栏后的页面，旧系统使用半透明背景。主账本保存在应用的 SQLite 数据库中，金额以整数分存储。Google Sheets 默认关闭，授权启用后会上传已入账流水。
 
 | 资产 | 收支 |
 | --- | --- |
-| ![资产页](docs/screenshots/notification-update/assets.png) | ![收支页](docs/screenshots/notification-update/transactions.png) |
+| ![资产页](docs/screenshots/floating-navigation/assets.png) | ![收支页](docs/screenshots/floating-navigation/transactions.png) |
 
 ## 余额和去重
 
@@ -39,6 +39,8 @@
 ```
 
 时间按设备本地时区解释，格式为 `yyyy-MM-dd HH:mm:ss`。金额填正数且最多两位小数；类型只能是「收入」或「支出」；流水号可空。专有银行 CSV 需先整理为上述列，暂不读取 PDF / XLSX。
+
+仓库附带可选的 [账单转 CSV 技能](skills/bills-to-csv/SKILL.md)，用于在 Codex 中把表格、PDF、截图等来源整理为标准七列，再交给应用预览导入。技能中的 Python 脚本使用标准库校验格式、金额、账户名单和 CSV 往返；原始文件提取、OCR 与交易含义仍需逐项核对。
 
 [样例流水](samples/bank-statement.csv) 包含一条重复流水，首次导入应选中 3 条。CSV 导出包含全部已入账记录，不包括通知候选；可重新导入，导出会转义电子表格公式前缀。
 

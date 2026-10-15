@@ -1,0 +1,4 @@
+interface:
+  display_name: "账单转 CSV"
+  short_description: "将表格、PDF、截图等账单整理为 OpenWallet 七列 CSV，并校验金额与字段"
+  default_prompt: "使用 $bills-to-csv 将我提供的账单文件转换为 OpenWallet 七列 CSV，列出无法确认的记录并核对收支合计。"

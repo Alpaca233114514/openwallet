@@ -1,6 +1,23 @@
 # 验证记录
 
-日期：2026-10-15。范围：`codex/android-demo` 工作区，尚未提交或推送。
+日期：2026-10-15。范围：`codex/android-demo` 分支；本文件记录本地验证结果，PR 的远端状态以 GitHub 为准。
+
+## PR 提交前复验（2026-10-15）
+
+- 使用现有依赖缓存离线运行 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug`，构建成功；未新增依赖或修改锁文件。本机回执：`.local/pr-validation-20261015.log`。
+- 账单转 CSV 脚本的合成数据检查通过：UTF-8 BOM、CSV 往返、金额合计、公式前缀转义、前导零流水号，以及重复流水号、错误账户和非法金额的拒绝。本检查不覆盖原始银行文件提取或 OCR。
+- 重新核对下述已有模拟器测试日志和最终页面截图；本次提交前复验未重新运行设备测试。真实通知、Google OAuth 和云端写入仍按下述限制保留为未验证。
+
+## 悬浮毛玻璃导航（2026-10-15）
+
+底部「资产 / 收支」改为圆角悬浮栏，两侧 20 dp、底部 12 dp 留白，并避让系统导航区。Android 12 及以上使用 Compose GraphicsLayer 捕获栏后的页面，在导航区域内执行 22 dp 背景模糊；高光描边、半透明渐变和阴影构成玻璃表面，图标与文字独立绘制以保持清晰。旧系统使用较高不透明度的半透明背景，尚未在旧系统设备上实测。没有新增依赖或修改依赖锁。
+
+实现前查阅了 GitHub 的 [Haze](https://github.com/chrisbanes/haze) 和 [Glassy Bottom Navigation](https://github.com/ditacristianionut/Glassy-Bottom-Navigation)；本次使用现有 Compose API 实现，GraphicsLayer 捕获方式参照 [Android 官方说明](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers#composable-to-bitmap)。
+
+- 最终 `assembleDebug assembleDebugAndroidTest lintDebug` 成功；Lint 0 errors、26 warnings，未关闭检查。
+- Android 15 / API 35 模拟器的现有隔离 UI 流程通过：`OK (1 test)`，覆盖示例账本、列表滚动、两页切换、手工记账和通知设置。未使用真实账本写入测试数据，测试后数据库目录仅剩 `openwallet.db`。
+- 已查看最终[资产页](screenshots/floating-navigation/assets.png)、[收支页](screenshots/floating-navigation/transactions.png)截图，并检查[滚动后的资产页](screenshots/floating-navigation/assets-scrolled.png)。列表末尾留白使最后一项可以滚动到浮栏和记账按钮上方；系统三键导航区保持无遮挡。
+- 本机日志：`.local/floating-nav-final-build.log`、`.local/floating-nav-final-ui-test.log`。APK：`app/build/outputs/apk/debug/app-debug.apk`。此前截图和失败日志保留。
 
 ## Google Sheets 自动导出更新
 
