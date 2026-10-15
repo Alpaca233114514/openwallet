@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.OpenWallet" parent="Theme.OpenWallet.Base">
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowSplashScreenBackground">#F6F8F7</item>
+    </style>
+</resources>
