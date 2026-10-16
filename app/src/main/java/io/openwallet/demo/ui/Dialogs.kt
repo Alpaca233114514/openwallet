@@ -90,16 +90,18 @@ import io.openwallet.demo.domain.*
     }, confirmButton = { Button(enabled = !busy && selected.any { it.value }, onClick = { save(rows.filter { selected[it.line] == true }) }) { Text("导入 ${selected.count { it.value }} 条") } }, dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("取消") } })
 }
 @Composable fun CandidateDialog(entry: Entry, state: WalletState, dismiss: () -> Unit, resolve: (Boolean, Long, Boolean) -> Unit) {
-    var account by remember { mutableLongStateOf(entry.accountId) }; var allow by remember { mutableStateOf(false) }
+    var account by remember(entry.id) { mutableLongStateOf(entry.accountId) }; var allow by remember(entry.id, account) { mutableStateOf(false) }
     val match = Duplicates.classify(entry.copy(accountId = account), state.entries.filterNot { it.id == entry.id })
+    val related = Duplicates.relatedPostedNotification(entry.copy(accountId = account), state.entries)
     AlertDialog(onDismissRequest = dismiss, title = { Text("确认这笔通知") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(entry.merchant); Text("${if (entry.direction == Direction.INCOME) "收入" else "支出"} ¥ ${Money.display(entry.amount)}", style = MaterialTheme.typography.headlineSmall)
             Text(Dates.text(entry.time)); AccountPicker(state.accounts, account) { account = it }
-            if (match == Match.POSSIBLE) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(allow, { allow = it }); Text("疑似重复，核对后仍然入账") }
+            related?.let { posted -> Text("已入账：${state.accounts.firstOrNull { it.id == posted.accountId }?.name.orEmpty()} · ${posted.source} · ¥ ${Money.display(posted.amount)}") }
+            if (match == Match.POSSIBLE) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(allow, { allow = it }); Text("确认是另一笔交易，仍然入账") }
             if (match == Match.EXACT || match == Match.CONFLICT) Text("流水号已存在，请忽略此候选", color = MaterialTheme.colorScheme.error)
         }
-    }, confirmButton = { Button(enabled = match == Match.NEW || (match == Match.POSSIBLE && allow), onClick = { resolve(true, account, allow) }) { Text("确认入账") } }, dismissButton = { Row { TextButton(onClick = { resolve(false, account, false) }) { Text("忽略") }; TextButton(onClick = dismiss) { Text("稍后") } } })
+    }, confirmButton = { Button(enabled = match == Match.NEW || (match == Match.POSSIBLE && allow), onClick = { resolve(true, account, allow) }) { Text(if (related != null) "另记一笔" else "确认入账") } }, dismissButton = { Row { TextButton(onClick = { resolve(false, account, false) }) { Text(if (related != null) "保留一笔" else "忽略") }; TextButton(onClick = dismiss) { Text("稍后") } } })
 }
 @Composable fun CaptureDialog(accounts: List<Account>, dismiss: () -> Unit) {
     val context = LocalContext.current; val prefs = remember { context.getSharedPreferences("capture", 0) }

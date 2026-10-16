@@ -1,0 +1,7 @@
+{
+  "endpoint": "https:\/\/api.github.com\/repos\/Alpaca233114514\/openwallet\/releases\/latest",
+  "httpStatus": 403,
+  "elapsedMs": 2411,
+  "result": "Failed",
+  "message": "GitHub 暂时限制访问，请稍后重试"
+}

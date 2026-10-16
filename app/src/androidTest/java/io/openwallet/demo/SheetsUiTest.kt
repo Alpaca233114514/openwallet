@@ -7,10 +7,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import io.openwallet.demo.export.SheetsSettings
 import io.openwallet.demo.ui.SheetsDialog
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,6 +45,19 @@ class SheetsUiTest {
         rule.waitUntil(10_000) { rule.onAllNodesWithText("已暂停自动导出").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("立即导出").assertDoesNotExist()
         rule.onNodeWithText("授权并启用").assertIsEnabled()
+    }
+    @Test fun missingGoogleServicesShowsActionableError() {
+        val status = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
+        assumeTrue("Requires a device without usable Google Play services", status != ConnectionResult.SUCCESS)
+        rule.runOnUiThread { rule.activity.setContent { WalletTheme { SheetsDialog(settings) {} } } }
+        rule.onNodeWithTag("sheets-email").performTextInput("wallet@example.com")
+        rule.onNodeWithText("连接并开启").performClick()
+        rule.onNodeWithTag("sheets-error").performScrollTo().assertIsDisplayed()
+            .assertTextContains("服务码 $status", substring = true)
+        rule.onNodeWithText("已取消授权").assertDoesNotExist()
+        rule.onNodeWithText("连接并开启").assertIsEnabled()
+        assertTrue(settings.target().email.isBlank())
+        screenshot("services-unavailable")
     }
     private fun screenshot(name: String) {
         rule.waitForIdle()

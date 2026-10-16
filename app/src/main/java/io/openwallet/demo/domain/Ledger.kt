@@ -11,7 +11,8 @@ data class Account(val id: Long, val name: String, val baseline: Long, val asOf:
 data class Entry(
     val id: Long = 0, val accountId: Long, val time: Long, val amount: Long,
     val direction: Direction, val merchant: String, val category: String,
-    val source: String = "手工", val externalId: String = "", val pending: Boolean = false
+    val source: String = "手工", val externalId: String = "", val pending: Boolean = false,
+    val autoPostAt: Long = 0
 ) {
     val signed: Long get() = if (direction == Direction.INCOME) amount else -amount
     fun samePayment(other: Entry) = accountId == other.accountId && time == other.time &&
@@ -35,12 +36,32 @@ object Dates {
     fun text(time: Long): String = format.format(java.time.Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()))
 }
 object Duplicates {
+    fun possibleMatch(entry: Entry, other: Entry): Boolean {
+        if (entry.samePayment(other)) return true
+        if (entry.amount != other.amount || entry.direction != other.direction) return false
+        val notifications = entry.source.startsWith("通知") && other.source.startsWith("通知")
+        // Android may update the same visible notification with a later timestamp. A reused slot is
+        // reviewable rather than silently discarded, since it can also represent a real new payment.
+        val identity = notificationIdentity(entry)
+        if (notifications && identity != null && identity == notificationIdentity(other)) return true
+        if (kotlin.math.abs(entry.time - other.time) > 120_000) return false
+        // A wallet payment and the funding bank's debit can refer to the same expense on different accounts.
+        return (entry.accountId == other.accountId && (entry.source != other.source || notifications)) ||
+            (notifications && entry.direction == Direction.EXPENSE && entry.source != other.source)
+    }
+
+    private fun notificationIdentity(entry: Entry): String? = entry.externalId.takeIf {
+        entry.source.startsWith("通知") && it.startsWith("notification:") && it.endsWith(":${entry.time}")
+    }?.removeSuffix(":${entry.time}")
+
+    fun relatedPostedNotification(entry: Entry, existing: List<Entry>): Entry? =
+        if (!entry.source.startsWith("通知")) null else existing.filter {
+            it.id != entry.id && !it.pending && it.source.startsWith("通知") && possibleMatch(entry, it)
+        }.minByOrNull { kotlin.math.abs(it.time - entry.time) }
+
     fun classify(entry: Entry, existing: List<Entry>): Match {
         val idMatch = existing.firstOrNull { it.accountId == entry.accountId && entry.externalId.isNotBlank() && it.externalId == entry.externalId }
         if (idMatch != null) return if (entry.samePayment(idMatch)) Match.EXACT else Match.CONFLICT
-        return if (existing.any { it.samePayment(entry) ||
-            (it.accountId == entry.accountId && it.amount == entry.amount && it.direction == entry.direction &&
-                kotlin.math.abs(it.time - entry.time) <= 120_000 && it.source != entry.source)
-        }) Match.POSSIBLE else Match.NEW
+        return if (existing.any { possibleMatch(entry, it) }) Match.POSSIBLE else Match.NEW
     }
 }

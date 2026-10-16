@@ -2,6 +2,7 @@ package io.openwallet.demo.ui
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -28,7 +29,6 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -49,9 +49,13 @@ private val Expense = Color(0xFFB76B4D)
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = settingsOpen) { settingsOpen = false }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var editAccount by remember { mutableStateOf<Account?>(null) }
     var candidate by remember { mutableStateOf<Entry?>(null) }
+    val currentCandidate = state.entries.firstOrNull { it.id == candidate?.id && it.pending }
+    LaunchedEffect(candidate?.id, currentCandidate?.id) { if (candidate != null && currentCandidate == null) candidate = null }
     var postedNotification by remember { mutableStateOf<Entry?>(null) }
     val snack = remember { SnackbarHostState() }
     val backdrop = rememberGraphicsLayer()
@@ -64,15 +68,19 @@ private val Expense = Color(0xFFB76B4D)
         snackbarHost = { SnackbarHost(snack) },
         topBar = { TopAppBar(title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Rounded.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary)
-                Text("OpenWallet", fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                if (!settingsOpen) Icon(Icons.Rounded.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary)
+                Text(if (settingsOpen) "设置" else "OpenWallet", fontWeight = FontWeight.Bold, fontSize = 22.sp)
             }
-        }, actions = { IconButton(onClick = { dialog = "tools" }) { Icon(Icons.Rounded.Tune, "账本工具") } }) },
+        }, navigationIcon = {
+            if (settingsOpen) IconButton(onClick = { settingsOpen = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回账本") }
+        }, actions = {
+            if (!settingsOpen) IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Rounded.Settings, "设置") }
+        }) },
         bottomBar = {
-            FloatingNavigationBar(selectedTab = tab, onTab = { tab = it }, backdrop = backdrop, backdropOrigin = backdropOrigin)
+            if (!settingsOpen) FloatingNavigationBar(selectedTab = tab, onTab = { tab = it }, backdrop = backdrop, backdropOrigin = backdropOrigin)
         },
         floatingActionButton = {
-            if (state.accounts.isNotEmpty()) ExtendedFloatingActionButton(onClick = { dialog = "entry" }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("记一笔") }, containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
+            if (!settingsOpen && state.accounts.isNotEmpty()) ExtendedFloatingActionButton(onClick = { dialog = "entry" }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("记一笔") }, containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
         }
     ) { padding ->
         // Let the list scroll behind the floating glass; its trailing padding keeps the last row reachable.
@@ -89,7 +97,12 @@ private val Expense = Color(0xFFB76B4D)
             }
             .background(MaterialTheme.colorScheme.background)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (state.accounts.isEmpty()) EmptyWallet(onAccount = { dialog = "account" }, onDemo = vm::demo, busy = busy)
+            if (settingsOpen) SettingsScreen(
+                onImport = { dialog = "importHelp" },
+                onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") },
+                onCapture = { dialog = "capture" }, onExcel = { dialog = "excel" }, onDrive = { dialog = "drive" },
+            )
+            else if (state.accounts.isEmpty()) EmptyWallet(onAccount = { dialog = "account" }, onDemo = vm::demo, busy = busy)
             else if (tab == 0) AssetsScreen(state, onAdd = { dialog = "account" }, onEdit = { editAccount = it; dialog = "account" }, onImport = { dialog = "importHelp" }, onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") })
             else TransactionsScreen(state, onCandidate = { candidate = it }, onNotification = { postedNotification = it }, onImport = { dialog = "importHelp" })
         }
@@ -97,15 +110,8 @@ private val Expense = Color(0xFFB76B4D)
     if (dialog == "account") AccountDialog(editAccount, dismiss = { dialog = null; editAccount = null }) { name, balance -> vm.account(name, balance, editAccount?.id); dialog = null; editAccount = null }
     if (dialog == "entry") EntryDialog(state.accounts, dismiss = { dialog = null }, save = { vm.add(it); dialog = null })
     if (dialog == "capture") CaptureDialog(state.accounts) { dialog = null }
-    if (dialog == "sheets") SheetsDialog { dialog = null }
-    if (dialog == "tools") AlertDialog(onDismissRequest = { dialog = null }, title = { Text("账本工具") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ToolRow(Icons.Rounded.FileDownload, "导入银行流水") { dialog = "importHelp" }
-            ToolRow(Icons.Rounded.FileUpload, "导出 CSV") { dialog = null; exportFile.launch("openwallet-${LocalDate.now()}.csv") }
-            ToolRow(Icons.Rounded.NotificationsNone, "通知自动记账") { dialog = "capture" }
-            ToolRow(Icons.Rounded.CloudUpload, "Google Sheets 自动导出") { dialog = "sheets" }
-        }
-    }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("完成") } })
+    if (dialog == "excel") ExcelDialog { dialog = null }
+    if (dialog == "drive") DriveDialog { dialog = null }
     if (dialog == "importHelp") AlertDialog(onDismissRequest = { dialog = null }, title = { Text("导入银行流水") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("将银行导出的流水整理为 UTF-8 CSV，并先在资产页添加同名账户。")
@@ -114,7 +120,7 @@ private val Expense = Color(0xFFB76B4D)
         }
     }, confirmButton = { Button(enabled = state.accounts.isNotEmpty(), onClick = { dialog = null; importFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) { Text("选择 CSV 文件") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
     preview?.let { rows -> ImportDialog(rows, busy, { vm.preview.value = null }, vm::importSelected) }
-    candidate?.let { entry -> CandidateDialog(entry, state, dismiss = { candidate = null }) { accept, account, allow -> vm.resolve(entry, accept, account, allow); candidate = null } }
+    currentCandidate?.let { entry -> CandidateDialog(entry, state, dismiss = { candidate = null }) { accept, account, allow -> vm.resolve(entry, accept, account, allow); candidate = null } }
     postedNotification?.let { entry -> AlertDialog(onDismissRequest = { postedNotification = null }, title = { Text("通知记账") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(entry.merchant)
@@ -185,6 +191,11 @@ private val Expense = Color(0xFFB76B4D)
     val pending = state.entries.filter { it.pending }
     val monthEntries = state.entries.filter { !it.pending && YearMonth.from(Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault())) == month }
     val visible = monthEntries.filter { filter == "全部" || (filter == "收入") == (it.direction == Direction.INCOME) }
+    val folded = pending.mapNotNull { candidate ->
+        Duplicates.relatedPostedNotification(candidate, visible)?.let { it.id to candidate }
+    }.groupBy({ it.first }, { it.second })
+    val foldedIds = folded.values.flatten().map { it.id }.toSet()
+    val separatePending = pending.filterNot { it.id in foldedIds }
     val expense = monthEntries.filter { it.direction == Direction.EXPENSE }.sumOf { it.amount }
     val income = monthEntries.filter { it.direction == Direction.INCOME }.sumOf { it.amount }
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 180.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -210,15 +221,23 @@ private val Expense = Color(0xFFB76B4D)
                 }
             }
         } }
-        if (pending.isNotEmpty()) {
-            item { Text("待确认通知 · ${pending.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
-            items(pending, key = { "pending-${it.id}" }) { e -> Surface(onClick = { onCandidate(e) }, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .6f), shape = RoundedCornerShape(18.dp)) { EntryRow(e, state, pending = true) } }
+        if (separatePending.isNotEmpty()) {
+            item { Text("待确认通知 · ${separatePending.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
+            items(separatePending, key = { "pending-${it.id}" }) { e -> Surface(onClick = { onCandidate(e) }, enabled = e.autoPostAt == 0L, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .6f), shape = RoundedCornerShape(18.dp)) { EntryRow(e, state, pending = true) } }
         }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("全部", "支出", "收入").forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) } } }
         if (visible.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("这个月还没有${if (filter == "全部") "记录" else filter}", color = MaterialTheme.colorScheme.onSurfaceVariant); TextButton(onClick = onImport) { Text("导入一份流水") } } }
         visible.groupBy { Dates.text(it.time).take(10) }.forEach { (date, entries) ->
             item(key = "date-$date") { Text(date, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)) }
-            items(entries, key = { it.id }) { e -> Surface(modifier = if (e.source.startsWith("通知")) Modifier.clickable { onNotification(e) } else Modifier, color = Color.White, shape = RoundedCornerShape(18.dp)) { EntryRow(e, state) } }
+            items(entries, key = { it.id }) { e -> Surface(color = Color.White, shape = RoundedCornerShape(18.dp)) {
+                Column {
+                    Box(modifier = if (e.source.startsWith("通知")) Modifier.clickable { onNotification(e) } else Modifier) { EntryRow(e, state) }
+                    folded[e.id]?.let { candidates ->
+                        val sources = (listOf(e) + candidates).map { it.source.removePrefix("通知·") }.distinct().joinToString(" / ")
+                        TextButton(onClick = { onCandidate(candidates.first()) }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("$sources · ${candidates.size + 1} 条通知 · 核对") }
+                    }
+                }
+            } }
         }
     }
 }
@@ -232,13 +251,7 @@ private val Expense = Color(0xFFB76B4D)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text("${if (e.direction == Direction.INCOME) "+" else "−"}${Money.display(e.amount)}", color = if (e.direction == Direction.INCOME) Income else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            if (pending) Text("核对入账", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+            if (pending) Text(if (e.autoPostAt > 0) "等待通知合并" else "待确认 · 未入账", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
         }
-    }
-}
-@Composable private fun ToolRow(icon: ImageVector, title: String, action: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = action).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-        Text(title, fontWeight = FontWeight.SemiBold)
     }
 }

@@ -2,10 +2,8 @@ package io.openwallet.demo.export
 
 import android.content.Context
 import androidx.work.*
-import io.openwallet.demo.data.WalletStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
 
 object SheetsSync {
     // Serializes worker snapshots, account changes and pause; an in-flight request finishes before switching.
@@ -15,19 +13,16 @@ object SheetsSync {
 object SheetsScheduler {
     private const val CHANGES = "sheets-export-changes"
     private const val PERIODIC = "sheets-export-periodic"
-    private val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
     fun restore(context: Context) {
-        if (!SheetsSettings(context).target().enabled) return
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<SheetsWorker>(15, TimeUnit.MINUTES).setConstraints(network).build())
+        // Retire persisted cloud work on upgrade; keep the account and remote file metadata.
+        synchronized(SheetsSync.lock) {
+            if (SheetsSettings(context).target().enabled) SheetsSettings(context).pause()
+            pause(context)
+        }
     }
     fun changed(context: Context) {
-        val target = SheetsSettings(context).target()
-        if (!target.enabled || target.needsAuthorization) return
-        // Chaining (rather than KEEP) preserves changes arriving after the active worker took its snapshot.
-        WorkManager.getInstance(context).enqueueUniqueWork(CHANGES, ExistingWorkPolicy.APPEND_OR_REPLACE,
-            OneTimeWorkRequestBuilder<SheetsWorker>().setConstraints(network)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build())
+        // Legacy callers cannot schedule another Google Sheets upload.
+        restore(context)
     }
     fun pause(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(CHANGES)
@@ -39,19 +34,9 @@ class SheetsWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         synchronized(SheetsSync.lock) {
             if (isStopped) return@synchronized Result.success()
-            val settings = SheetsSettings(applicationContext)
-            try {
-                when (SheetsExport(settings, GoogleSheetsGateway(applicationContext, settings.installKey), { WalletStore.get(applicationContext).snapshot() }).run()) {
-                    ExportResult.RETRY -> if (runAttemptCount < 5) Result.retry() else {
-                        settings.failure("多次导出失败，等待下一次后台检查或手动重试")
-                        Result.failure()
-                    }
-                    ExportResult.DONE, ExportResult.STOPPED -> Result.success()
-                }
-            } catch (_: Exception) {
-                settings.failure("导出未完成，请重试或检查应用配置")
-                Result.failure()
-            }
+            // An old WorkManager request can survive an APK upgrade. Never contact Google here.
+            SheetsScheduler.restore(applicationContext)
+            Result.success()
         }
     }
 }

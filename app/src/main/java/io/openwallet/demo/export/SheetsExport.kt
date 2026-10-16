@@ -21,7 +21,7 @@ interface SheetsGateway {
     fun invalidate(token: String)
 }
 
-class ExportFailure(val retryable: Boolean, val needsAuthorization: Boolean, message: String) : Exception(message)
+class ExportFailure(val retryable: Boolean, val needsAuthorization: Boolean, message: String, val statusCode: Int? = null) : Exception(message)
 enum class ExportResult { DONE, RETRY, STOPPED }
 
 /** Replaces the dedicated table with a snapshot, so retries never append duplicate transactions. */

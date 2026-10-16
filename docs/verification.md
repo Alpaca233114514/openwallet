@@ -2,6 +2,56 @@
 
 日期：2026-10-15。范围：`codex/android-demo` 分支；本文件记录本地验证结果，PR 的远端状态以 GitHub 为准。
 
+## 本机 Excel 自动导出（2026-10-16）
+
+- 将设置页 Google Sheets 入口替换为 Excel 自动导出，选择本机目录并持久授权后更新 `.xlsx`。旧 Sheets 的周期和变更任务在升级时取消，旧 Worker 恢复时也不上传；保留历史账户/云端表格元数据。Google 云盘每日 CSV 保持独立。未新增依赖。
+- 最终离线 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 成功，41 项 JVM 测试通过；Lint 0 errors / 40 warnings，未关闭检查。回执 `.local/excel-durable-permission-build.log`。交付包 `.local/deliverables/OpenWallet-Excel-20261016-final-debug.apk`，已覆盖安装到 API 35 隔离模拟器。
+- 相关设备回归 `OK (5 tests)`，覆盖 Excel 系统目录选择与持久授权、真实文档提供程序写入、重复更新沿用同一文件、移除过期行、暂停/继续、暂停状态重读、持久授权撤销停止，以及设置页返回/更新状态、资产/收支和手工记账。回执 `.local/excel-device-verified.log`。账本 UI 使用隔离数据库与合成数据，未改写原有主账本。
+- 从设备导出的合成工作簿由独立桌面 `openpyxl` 读取：5 条已入账流水、9 列，收入 12800.00、支出 3361.30，金额为数值、两位小数格式；冻结 `A2`、筛选 `A1:I6`。JVM 样例另验证长流水号/前导零、中文/emoji/XML 特殊字符、公式前缀作为文本、待确认排除和空表。
+- 初次设备测试发现目录选择器初始位置传入 tree URI 时退回根目录，已改用 document URI。授权撤销测试发现系统仍可能保留临时访问权，因此导出器新增持久读写授权检查，不把临时可访问误报为后台授权有效。相关失败回执保留于 `.local/excel-device-test-1.log`、`.local/excel-device-final.log`、`.local/excel-permission-device-final.log`。
+- [资产](screenshots/excel-export/assets.png)、[收支](screenshots/excel-export/transactions.png)、[设置](screenshots/excel-export/settings.png)、[开启后导出](screenshots/excel-export/excel-connected.png)截图均来自模拟器中的生产界面组件。Excel 开启后界面使用隔离设置和实际写入的示例文件；未向真实 Google 账户上传。
+
+本轮没有在实体手机中验证 Excel/WPS 打开、重启后的持续调度、厂商省电环境或存储中断。周期任务最短 15 分钟，实际执行受系统调度影响；文件提供程序不保证原子写入，失败状态和重试不能等同于导出成功。本轮未提交或推送。
+
+## 独立设置页与检查更新（2026-10-15）
+
+- 最终 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 成功；38 项 JVM 测试通过，Lint 0 errors / 37 warnings。未新增依赖或关闭检查。安装包为 `app/build/outputs/apk/debug/app-debug.apk`，已覆盖安装到现有 API 35 模拟器，保留原有应用数据。构建回执 `.local/settings-update-build-final.log`，安装回执 `.local/settings-update-install-final.log`。
+- 完整设备回归输出 `OK (46 tests)`，其中 45 项通过、1 项按需联网检查因未传入 `liveUpdates=true` 跳过。新增 4 项 release 解析/响应测试及 3 项设置 UI 测试，覆盖数字和预发布版本排序、相同/旧版本、缺少 APK/发布说明、无公开版本、错误响应、超时/断网、检查中禁用重复请求、重试、重新进入设置保留结果、无账户时打开设置、顶部及系统返回；已有账本、通知和 Google 导出回归也通过。回执 `.local/settings-update-device-final.log`。
+- 按用户要求另行显式运行真实联网测试：在 APP 内点击「检查更新」，使用生产 HTTPS transport，请求固定 GitHub Releases API，约 2411 ms 得到 HTTP 403。电脑侧同一接口明确返回 `API rate limit exceeded`。因此已验证请求可到达 GitHub，但当时的匿名 API 额度耗尽，未成功取得真实版本信息，真实联网测试如实判为失败。没有把它改成模拟成功；回执 `.local/settings-update-live-1.log` 与[联网 JSON](screenshots/settings-update/live-connectivity.json)。
+- 已检查[完整设置页](screenshots/settings-update/settings.png)和[真实 403 错误界面](screenshots/settings-update/live-connectivity.png)截图，无系统弹窗遮挡。后者是用生产设置组件运行的联网测试界面，省略了外层导航栏；[新版本提示](screenshots/settings-update/update-available.png)使用注入测试响应，属于界面验证。
+- 首轮设备进程在冷启动阶段 ANR，未执行到功能测试；正常启动后恢复。完整回归第二轮有一项测试在设置页完成渲染前触发系统返回，已调整测试为确认页面显示后再返回，最终整套回归通过。失败回执保留在 `.local/settings-update-device-1.log`、`.local/settings-update-runtime-1.log`、`.local/settings-update-device-2.log`。
+
+检查更新的开发和本地回归已完成；在线获取真实版本目前受 GitHub 限流影响，真实 APK 下载及覆盖升级尚未验证。发布要求见[应用更新说明](app-updates.md)。本轮未提交或推送。
+
+## 通知重复记账、折叠与缓冲（2026-10-15）
+
+修复前在 API 35 隔离模拟器中新增 3 个复现用例，连同原有 4 项通知测试运行。原样重复投递同一条招商通知只产生 1 条账目；另外两个断言失败：同一 Android 通知标识更新时间后，待确认项能在未勾选重复确认的情况下再次入账；微信与银行映射不同账户时，第二条同额支出通知返回 `AUTO_POSTED`。回执 `.local/duplicate-before-fix-device-tests.log` 为 `Tests run: 7, Failures: 2`。这证明了代码存在相应路径，尚不能据此确定手机上那笔真实交易经过了哪些系统回调。
+
+修复后，采集、缓冲到期检查、确认和界面折叠使用同一套匹配规则。同一通知标识、同账户、同额同方向的时间戳变化不会绕过检查；通知标识可能被应用复用，因此保留核对真实新交易的入口。两分钟内不同来源的同额支出通知，即使账户不同，也只允许第一条自动入账，其余作为候选折叠在已入账记录下。默认保留第一条的账户，只有明确勾选是另一笔交易才能追加。收入与支出、不同金额、不同账户的普通 CSV 记录不按跨通知规则折叠。
+
+自动入账先等待 8 秒，期限持久化到 SQLite；到期在事务中重新检查已入账记录。应用启动和通知监听重连会恢复调度，系统暂停进程可能延后执行。缓冲中的候选不影响余额、统计和导出。数据库 v1 → v2 仅增加 `auto_post_at` 列，保留历史入账、待确认及已忽略记录；没有自动删除或改写已入账的历史重复项。
+
+- 离线 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 成功，35 项 JVM 测试全部通过，Lint 0 errors / 27 warnings，未新增依赖或关闭检查。回执 `.local/duplicate-buffer-build.log`。
+- 完整设备回归 `OK (37 tests)`：10 项通知、5 项缓冲/迁移、2 项折叠 UI，以及已有 SQLite、账本 UI、Sheets 和 Drive 测试。回执 `.local/duplicate-buffer-device-tests.log`。
+- 最后禁止缓冲记录提前确认，并让确认对话框跟随当前记录状态更新。最终构建、JVM 测试与 Lint 成功，回执 `.local/duplicate-final-build.log`；3 项折叠 UI 复验为 `OK (3 tests)`，回执 `.local/duplicate-final-ui-tests.log`。其中新增用例检查等待合并时入口禁用、到期后余额更新。
+- 真实定时器用例等待微信晚到 5 秒，检查 8 秒前总余额仍为 200 元，到期后为 177 元，只导出 1 笔 23 元支出；另覆盖到期前 1 毫秒不入账、关闭重开数据库恢复期限、忽略取消自动入账、等待期间出现 CSV 入账后不重复扣账。
+- 同一招商通知标识在原样重投、1 秒后更新时间、3 分钟后更新时间时，均验证不会未经明确允许再次扣账。折叠 UI 验证默认只有一张金额卡、可保留一笔、可明确追加另一笔，以及切换筛选后候选仍可访问。
+- 复现与修复使用合成通知构造实际 `StatusBarNotification`，并调用生产监听器共用的提取、解析、SQLite 记账路径。尚未接收手机上的真实招商/微信推送，也未读取或修复手机账本。没有提交或推送。
+- 已查看最终[通知折叠](screenshots/notification-folding/folded.png)、[重复核对](screenshots/notification-folding/review.png)和[等待合并](screenshots/notification-folding/buffered.png)截图，没有系统弹窗遮挡。测试数据使用独立临时数据库和设置，结束后设备数据库目录仅保留 `openwallet.db` 及其 journal。
+- 本轮安装包副本：`.local/notification-fix-20261015/app-debug.apk`。独立构建输出位于 `.local/auth-feedback-build-20261015/app/outputs/apk/debug/app-debug.apk`，标准 `app/build` 中的旧 APK 不代表本轮结果。
+
+对照了现有开源项目 [expense-notification](https://github.com/fanis/expense-notification) 的跨来源重复核对思路及仓库已有参考 [seamless-bookkeeping](https://github.com/DykiSensei/seamless-bookkeeping)；本次规则和事务逻辑由本仓库实现。
+
+## Google 云盘每日 CSV（2026-10-15）
+
+- 最终离线运行 `assembleDebug testDebugUnitTest assembleDebugAndroidTest lintDebug` 成功，安装包为 `app/build/outputs/apk/debug/app-debug.apk`。未新增依赖，依赖锁保持原样。回执：`.local/drive-verified-build.log`。
+- 当前工作区 JVM 测试共 33 项通过，其中新增 `DriveExportTest` 7 项：本地日期边界、待确认过滤与 CSV 转义、固定 15 分钟重试期限、重复触发不重置、初次加 5 次重试上限、跨天与漏跑日期补传、暂停/授权失效以及同日快照替换。另保留工作区同期的 Sheets 授权诊断修改，其 6 项单元测试也通过。
+- Android 15 / API 35 AOSP 隔离模拟器完成 11 项设备测试：`DriveIntegrationTest` 5 项、`DriveUiTest` 2 项、已有 `SheetsIntegrationTest` 4 项。回执：`.local/drive-verified-install.log`、`.local/drive-verified-device-tests.log`，结果 `OK (11 tests)`。
+- 模拟网关检查覆盖预生成 ID、创建响应丢失后的恢复、409 冲突后核对并更新、CSV MIME / multipart 请求、文件夹与文件归属校验、账户间目标隔离及重试队列持久化。UI 覆盖邮箱校验、手动重试后清除旧错误、暂停和缺少 Google Play 服务的明确提示。临时设置使用独立名称并在测试后清理，没有连接真实 Google 账户。
+- Lint：0 errors、36 warnings，主要为可选依赖升级、KTX 写法与现有备份规则提示；未关闭规则或升级依赖。`git diff --check` 通过。
+- 初次截图被模拟器的 System UI 无响应弹窗遮挡；正常点击系统「Wait」恢复后重新执行测试并检查截图。旧图保留在 `screenshots/drive-update/initial`，最终使用 [授权入口](screenshots/drive-update/verified/connect.png)、[手动重试](screenshots/drive-update/verified/retry.png)、[服务缺失提示](screenshots/drive-update/verified/services-unavailable.png)。截图中的账户和状态由隔离测试注入，不代表真实授权或云盘写入。
+- 当前模拟器缺少 Google Play 服务。真实 OAuth、后台令牌续期、Drive 文件夹创建/CSV 写入以及真机休眠恢复尚未验证；需按 [云盘配置](google-drive.md) 在有 Google Play 服务且配置好 Android OAuth 的设备上验收。自动任务受系统调度影响，不能将 15 分钟最小间隔解释为精确计时保证。
+
 ## PR 提交前复验（2026-10-15）
 
 - 使用现有依赖缓存离线运行 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug`，构建成功；未新增依赖或修改锁文件。本机回执：`.local/pr-validation-20261015.log`。

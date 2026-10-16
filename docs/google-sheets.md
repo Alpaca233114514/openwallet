@@ -1,12 +1,14 @@
 # Google Sheets 自动导出
 
+> 历史功能说明：2026-10-16 起，该入口已替换为[本机 Excel 自动导出](excel-export.md)。升级后取消旧 Sheets 后台任务，保留已有云端表格与账户元数据；下文仅保留原实现的配置记录。
+
 ## 一次性 Google Cloud 配置
 
 1. 在 [Google Cloud Console](https://console.cloud.google.com/) 创建或选择自己的项目，启用 **Google Sheets API** 和 **Google Drive API**。
 2. 配置 Google Auth Platform 的应用信息、受众和数据访问。个人测试可使用 External / Testing，并把目标 Google 邮箱加入测试用户。
 3. 创建 **Android** 类型 OAuth 客户端，包名填 `io.openwallet.demo`，填写所安装 APK 签名证书的 **SHA-1**。可运行 `./gradlew signingReport` 查看；debug、release、Google Play App Signing 的证书可能不同，需分别注册实际使用的证书。
 4. 声明 `https://www.googleapis.com/auth/drive.file` 和 `https://www.googleapis.com/auth/userinfo.email`。前者限定到本应用使用/创建的文件，后者用于核对指定账户。
-5. 在具备 Google Play 服务、能连接 Google API 的 Android 设备上登录目标 Google 账户，安装 APK，然后进入「账本工具 → Google Sheets 自动导出」，输入该账户的准确邮箱并授权。别名与账户实际返回邮箱不一致时会拒绝导出。
+5. 在具备 Google Play 服务、能连接 Google API 的 Android 设备上登录目标 Google 账户，安装 APK，然后进入「设置 → Google Sheets 自动导出」，输入该账户的准确邮箱并授权。别名与账户实际返回邮箱不一致时会拒绝导出。
 
 此实现由 Google Play 服务按包名与签名识别 Android OAuth 客户端，无需在源码中加入 client secret、服务账户密钥或 Web 客户端 ID。短期访问令牌只在内存中使用，后续授权交给 Google Play 服务管理；不保存 refresh token。系统授权不能由代码代替用户点击。
 
