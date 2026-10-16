@@ -1,10 +1,10 @@
 package io.openwallet.demo.ui
 
-import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Patterns
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +20,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.api.ApiException
 import io.openwallet.demo.domain.Dates
 import io.openwallet.demo.export.*
 import kotlinx.coroutines.Dispatchers
@@ -42,10 +45,16 @@ import kotlinx.coroutines.withContext
     var requestedEmail by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val reportFailure: (String, GoogleAuthFeedback) -> Unit = { stage, feedback ->
+        busy = false
+        error = feedback.message
+        // Do not log exception messages, returned intents, tokens, or account details.
+        Log.w("OpenWalletAuth", "sheets stage=$stage ${feedback.diagnostic}")
+    }
     val finishAuthorization: (AuthorizationResult) -> Unit = { result ->
         val token = result.accessToken
         if (token.isNullOrBlank() || result.hasResolution() || requestedEmail.isBlank()) {
-            busy = false; error = "授权未完成，请重试"
+            reportFailure("token", GoogleAuthFeedback("Google 未完成授权，未取得访问权限，请重新连接", "incompleteResult=true"))
         } else {
             scope.launch {
                 busy = true
@@ -60,16 +69,27 @@ import kotlinx.coroutines.withContext
                         }
                     }
                     error = null
-                } catch (e: ExportFailure) { error = e.message }
-                catch (_: Exception) { error = "连接失败，请检查网络和 Google Cloud OAuth 配置" }
+                } catch (e: ExportFailure) {
+                    error = e.message
+                    Log.w("OpenWalletAuth", "sheets stage=verify retryable=${e.retryable} needsAuthorization=${e.needsAuthorization}")
+                }
+                catch (e: Exception) { reportFailure("verify", GoogleAuthErrors.unexpected("验证 Google 账户失败", e)) }
                 finally { busy = false }
             }
         }
     }
     val authorization = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        if (result.resultCode != Activity.RESULT_OK) { busy = false; error = "已取消授权" }
-        else try { finishAuthorization(client.getAuthorizationResultFromIntent(result.data)) }
-        catch (_: Exception) { busy = false; error = "授权失败，请检查 Google Cloud OAuth 配置后重试" }
+        Log.i("OpenWalletAuth", "sheets stage=activity_result resultCode=${result.resultCode} hasData=${result.data != null}")
+        if (result.data?.hasExtra(ActivityResultContracts.StartIntentSenderForResult.EXTRA_SEND_INTENT_EXCEPTION) == true) {
+            reportFailure("launch", GoogleAuthFeedback("系统未能打开 Google 授权页面，请重试", "intentSenderFailed=true"))
+            return@rememberLauncherForActivityResult
+        }
+        when (val outcome = readGoogleAuthResult(result.resultCode, result.data != null) {
+            client.getAuthorizationResultFromIntent(result.data)
+        }) {
+            is GoogleAuthOutcome.Success -> finishAuthorization(outcome.result)
+            is GoogleAuthOutcome.Failure -> reportFailure("activity_result", outcome.feedback)
+        }
     }
     AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("Google Sheets 自动导出") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -80,14 +100,24 @@ import kotlinx.coroutines.withContext
             Button(enabled = !busy && Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches(), modifier = Modifier.fillMaxWidth(), onClick = {
                 requestedEmail = email.trim().lowercase(java.util.Locale.ROOT)
                 busy = true; error = null
+                val serviceStatus = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
+                if (serviceStatus != ConnectionResult.SUCCESS) {
+                    reportFailure("services", GoogleAuthErrors.services(serviceStatus))
+                    return@Button
+                }
+                Log.i("OpenWalletAuth", "sheets stage=request")
                 client.authorize(SheetsAuthorization.request(requestedEmail)).addOnSuccessListener { result ->
+                    Log.i("OpenWalletAuth", "sheets stage=request_result hasResolution=${result.hasResolution()}")
                     if (result.hasResolution()) {
                         val intent = result.pendingIntent
-                        if (intent == null) { busy = false; error = "无法打开 Google 授权" }
+                        if (intent == null) { reportFailure("launch", GoogleAuthFeedback("Google 未提供授权页面，请重试", "missingPendingIntent=true")) }
                         else try { authorization.launch(IntentSenderRequest.Builder(intent.intentSender).build()) }
-                        catch (_: Exception) { busy = false; error = "无法打开 Google 授权，请检查 Google Play 服务" }
+                        catch (e: Exception) { reportFailure("launch", GoogleAuthErrors.unexpected("无法打开 Google 授权页面", e)) }
                     } else finishAuthorization(result)
-                }.addOnFailureListener { busy = false; error = "授权失败，请检查 Google Play 服务与 OAuth 配置" }
+                }.addOnFailureListener { e ->
+                    reportFailure("request", if (e is ApiException) GoogleAuthErrors.api(e.statusCode)
+                        else GoogleAuthErrors.unexpected("请求 Google 授权失败", e))
+                }
             }) { Text(if (target.email.isBlank()) "连接并开启" else "授权并启用") }
             Text(remember(revision) { settings.status }, modifier = Modifier.testTag("sheets-status"))
             val lastSuccess = remember(revision) { settings.lastSuccess }
@@ -112,7 +142,7 @@ import kotlinx.coroutines.withContext
                 catch (_: Exception) { error = "未找到可打开表格的应用" }
             }) { Text("打开表格") }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            error?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("sheets-error")) }
         }
     }, confirmButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("完成") } })
 }

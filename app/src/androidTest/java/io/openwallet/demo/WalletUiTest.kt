@@ -65,7 +65,7 @@ class WalletUiTest {
         rule.waitUntil(10_000) { rule.onAllNodesWithText("已记一笔").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("资产", useUnmergedTree = true).performClick()
         rule.onNodeWithText("我的资产").assertIsDisplayed()
-        rule.onNodeWithContentDescription("账本工具").performClick()
+        rule.onNodeWithContentDescription("设置").performClick()
         screenshot("tools")
         rule.onNodeWithText("通知自动记账").performClick()
         rule.onNodeWithTag("capture-enabled").performClick()

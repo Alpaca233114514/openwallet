@@ -32,6 +32,28 @@ class LedgerTest {
         assertEquals(Match.POSSIBLE, Duplicates.classify(entry.copy(externalId = ""), listOf(entry)))
         assertEquals(Match.POSSIBLE, Duplicates.classify(entry.copy(time = entry.time + 60_000, source = "通知", externalId = "notice-1"), listOf(entry)))
     }
+    @Test fun notificationExpensesMatchAcrossAccountsAndSameSourceUpdates() {
+        val bank = entry.copy(source = "通知·招商银行", externalId = "bank-notification")
+        val wechat = bank.copy(accountId = 2, time = bank.time + 120_000, source = "通知·微信", externalId = "wechat-notification")
+        assertEquals(Match.POSSIBLE, Duplicates.classify(wechat, listOf(bank)))
+        assertEquals(Match.POSSIBLE, Duplicates.classify(bank, listOf(wechat)))
+        assertEquals(Match.POSSIBLE, Duplicates.classify(bank.copy(time = bank.time + 1000, externalId = "bank-update"), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(time = bank.time + 120_001), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(amount = bank.amount + 1), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(direction = Direction.INCOME), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(source = "CSV"), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(source = bank.source), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(wechat.copy(direction = Direction.INCOME), listOf(bank.copy(direction = Direction.INCOME))))
+    }
+    @Test fun foldingChoosesNearestPostedNotificationAndKeepsPendingSeparate() {
+        val bank = entry.copy(id = 1, source = "通知·招商银行")
+        val candidate = bank.copy(id = 2, accountId = 2, time = bank.time + 1000, source = "通知·微信", pending = true)
+        assertEquals(bank, Duplicates.relatedPostedNotification(candidate, listOf(candidate, bank)))
+        assertNull(Duplicates.relatedPostedNotification(candidate, listOf(bank.copy(pending = true))))
+        assertNull(Duplicates.relatedPostedNotification(candidate, listOf(bank.copy(source = "CSV"))))
+        val closer = bank.copy(id = 3, time = candidate.time)
+        assertEquals(closer, Duplicates.relatedPostedNotification(candidate, listOf(bank, closer)))
+    }
     @Test fun notificationIgnoresOtherAppsFailuresAndOtp() {
         val pkg = "com.eg.android.AlipayGphone"
         assertNull(NotificationParser.parse("unrelated.app", "支付成功 28.50元", 1, 1, "1"))
