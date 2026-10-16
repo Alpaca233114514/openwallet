@@ -100,7 +100,7 @@ private val Expense = Color(0xFFB76B4D)
             if (settingsOpen) SettingsScreen(
                 onImport = { dialog = "importHelp" },
                 onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") },
-                onCapture = { dialog = "capture" }, onSheets = { dialog = "sheets" }, onDrive = { dialog = "drive" },
+                onCapture = { dialog = "capture" }, onExcel = { dialog = "excel" }, onDrive = { dialog = "drive" },
             )
             else if (state.accounts.isEmpty()) EmptyWallet(onAccount = { dialog = "account" }, onDemo = vm::demo, busy = busy)
             else if (tab == 0) AssetsScreen(state, onAdd = { dialog = "account" }, onEdit = { editAccount = it; dialog = "account" }, onImport = { dialog = "importHelp" }, onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") })
@@ -110,7 +110,7 @@ private val Expense = Color(0xFFB76B4D)
     if (dialog == "account") AccountDialog(editAccount, dismiss = { dialog = null; editAccount = null }) { name, balance -> vm.account(name, balance, editAccount?.id); dialog = null; editAccount = null }
     if (dialog == "entry") EntryDialog(state.accounts, dismiss = { dialog = null }, save = { vm.add(it); dialog = null })
     if (dialog == "capture") CaptureDialog(state.accounts) { dialog = null }
-    if (dialog == "sheets") SheetsDialog { dialog = null }
+    if (dialog == "excel") ExcelDialog { dialog = null }
     if (dialog == "drive") DriveDialog { dialog = null }
     if (dialog == "importHelp") AlertDialog(onDismissRequest = { dialog = null }, title = { Text("导入银行流水") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {

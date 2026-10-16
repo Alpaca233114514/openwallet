@@ -2,6 +2,17 @@
 
 日期：2026-10-15。范围：`codex/android-demo` 分支；本文件记录本地验证结果，PR 的远端状态以 GitHub 为准。
 
+## 本机 Excel 自动导出（2026-10-16）
+
+- 将设置页 Google Sheets 入口替换为 Excel 自动导出，选择本机目录并持久授权后更新 `.xlsx`。旧 Sheets 的周期和变更任务在升级时取消，旧 Worker 恢复时也不上传；保留历史账户/云端表格元数据。Google 云盘每日 CSV 保持独立。未新增依赖。
+- 最终离线 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 成功，41 项 JVM 测试通过；Lint 0 errors / 40 warnings，未关闭检查。回执 `.local/excel-durable-permission-build.log`。交付包 `.local/deliverables/OpenWallet-Excel-20261016-final-debug.apk`，已覆盖安装到 API 35 隔离模拟器。
+- 相关设备回归 `OK (5 tests)`，覆盖 Excel 系统目录选择与持久授权、真实文档提供程序写入、重复更新沿用同一文件、移除过期行、暂停/继续、暂停状态重读、持久授权撤销停止，以及设置页返回/更新状态、资产/收支和手工记账。回执 `.local/excel-device-verified.log`。账本 UI 使用隔离数据库与合成数据，未改写原有主账本。
+- 从设备导出的合成工作簿由独立桌面 `openpyxl` 读取：5 条已入账流水、9 列，收入 12800.00、支出 3361.30，金额为数值、两位小数格式；冻结 `A2`、筛选 `A1:I6`。JVM 样例另验证长流水号/前导零、中文/emoji/XML 特殊字符、公式前缀作为文本、待确认排除和空表。
+- 初次设备测试发现目录选择器初始位置传入 tree URI 时退回根目录，已改用 document URI。授权撤销测试发现系统仍可能保留临时访问权，因此导出器新增持久读写授权检查，不把临时可访问误报为后台授权有效。相关失败回执保留于 `.local/excel-device-test-1.log`、`.local/excel-device-final.log`、`.local/excel-permission-device-final.log`。
+- [资产](screenshots/excel-export/assets.png)、[收支](screenshots/excel-export/transactions.png)、[设置](screenshots/excel-export/settings.png)、[开启后导出](screenshots/excel-export/excel-connected.png)截图均来自模拟器中的生产界面组件。Excel 开启后界面使用隔离设置和实际写入的示例文件；未向真实 Google 账户上传。
+
+本轮没有在实体手机中验证 Excel/WPS 打开、重启后的持续调度、厂商省电环境或存储中断。周期任务最短 15 分钟，实际执行受系统调度影响；文件提供程序不保证原子写入，失败状态和重试不能等同于导出成功。本轮未提交或推送。
+
 ## 独立设置页与检查更新（2026-10-15）
 
 - 最终 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 成功；38 项 JVM 测试通过，Lint 0 errors / 37 warnings。未新增依赖或关闭检查。安装包为 `app/build/outputs/apk/debug/app-debug.apk`，已覆盖安装到现有 API 35 模拟器，保留原有应用数据。构建回执 `.local/settings-update-build-final.log`，安装回执 `.local/settings-update-install-final.log`。

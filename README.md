@@ -1,6 +1,6 @@
 # OpenWallet
 
-原生 Android 本地记账 demo。Kotlin + Jetpack Compose / Material 3，SQLite 持久化，无后端；可选连接 Google Sheets 或 Google 云盘自动导出。
+原生 Android 本地记账 demo。Kotlin + Jetpack Compose / Material 3，SQLite 持久化，无后端；支持本机 Excel 自动导出，可选连接 Google 云盘每日导出 CSV。
 
 ## 体验
 
@@ -9,13 +9,13 @@
 - **资产**：总资产、各账户当前余额、本月收入和支出；点击账户校准当前余额。
 - **收支**：按月浏览、收入/支出筛选、分类占比、明细和待确认通知。
 - **记一笔**：选择账户，填写金额、交易方、分类和时间。
-- **设置**：右上角齿轮进入独立页面，包含 CSV 导入/导出、通知自动记账、Google Sheets 自动导出、Google 云盘每日 CSV，以及当前版本与检查更新。支持页面返回和系统返回。
+- **设置**：右上角齿轮进入独立页面，包含 CSV 导入/导出、通知自动记账、Excel 自动导出、Google 云盘每日 CSV，以及当前版本与检查更新。支持页面返回和系统返回。
 
-界面采用浅色 Material 3、绿色资产卡和悬浮毛玻璃底部导航。导航栏两侧留白，适配系统导航区；Android 12 及以上实时模糊栏后的页面，旧系统使用半透明背景。主账本保存在应用的 SQLite 数据库中，金额以整数分存储。Google Sheets 默认关闭，授权启用后会上传已入账流水。
+界面采用浅色 Material 3、绿色资产卡和悬浮毛玻璃底部导航。导航栏两侧留白，适配系统导航区；Android 12 及以上实时模糊栏后的页面，旧系统使用半透明背景。主账本保存在应用的 SQLite 数据库中，金额以整数分存储。Excel 自动导出默认关闭，选择本机文件夹后开启。
 
 | 资产 | 收支 |
 | --- | --- |
-| ![资产页](docs/screenshots/floating-navigation/assets.png) | ![收支页](docs/screenshots/floating-navigation/transactions.png) |
+| ![资产页](docs/screenshots/excel-export/assets.png) | ![收支页](docs/screenshots/excel-export/transactions.png) |
 
 ## 余额和去重
 
@@ -54,13 +54,17 @@
 
 规则仍是实验性适配：本轮验证覆盖解析、设置到 SQLite 的记账链路和模拟器界面，尚未接收支付宝、微信或银行的真实通知进行端到端验证。系统权限需要在安装设备上手动开启。
 
-## Google Sheets 自动导出
+## Excel 自动导出
 
-在「设置 → Google Sheets 自动导出」填写设备上的目标 Google 邮箱，点击「连接并开启」并完成 Google 授权。应用会在该账户自己的 Drive 中创建「OpenWallet 自动导出」表格，后续持续更新同一张表。首次使用前需完成 [Google Cloud 配置](docs/google-sheets.md)。
+在「设置 → Excel 自动导出」选择本机文件夹，应用会创建 `OpenWallet-流水.xlsx` 并持续更新同一文件，无需 Google 账户或联网。
 
-手工记账、CSV 导入、通知入账与移回待确认均会安排导出；WorkManager 另以 15 分钟为最短周期做后台补偿，实际执行时间由系统与联网状态决定。设置中可以立即导出、打开表格、暂停或更换账户。暂停保留已有云端表格；不同账户各自保存导出目标。
+手工记账、CSV 导入、通知入账与移回待确认均会安排导出；WorkManager 另以至少 15 分钟周期做后台补偿，实际执行时间由系统调度决定。设置中可立即导出、打开 Excel、暂停、继续或更换目录。旧 Google Sheets 后台任务在升级后停止，原有云端表格保留。
 
-只包含已入账流水，不上传待确认/忽略的通知或原始通知正文。导出工作表的 A:I 是应用管理的快照区域，手动修改会在下一次导出时被覆盖；分析公式请放在其他工作表。金额和流水号按文本写入以保留精度及前导零。尚未完成真实 Google 账户授权及云端写入验收，本地测试范围见 [验证记录](docs/verification.md)。
+仅导出已入账流水，金额使用数值和两位小数格式，流水号按文本保留前导零与长编号。冻结表头并支持筛选。导出文件是账本快照，手动修改会在下一次导出时被覆盖；编辑前请先复制。使用说明与权限恢复见 [Excel 导出文档](docs/excel-export.md)，验证范围见 [验证记录](docs/verification.md)。
+
+| 设置 | Excel 导出 |
+| --- | --- |
+| ![设置页](docs/screenshots/excel-export/settings.png) | ![Excel 导出](docs/screenshots/excel-export/excel-connected.png) |
 
 ## Google 云盘每日 CSV
 
@@ -72,24 +76,22 @@
 
 ## 联网地址与代理排查
 
-Google Sheets 和 Google 云盘导出需要访问以下 HTTPS 地址（TCP 443）。如果代理采用域名分流，请确认 **`www.googleapis.com` 和 `sheets.googleapis.com` 都走可访问 Google 的线路**；浏览器能打开 Google 首页，不代表这些 API 地址已被代理。
+Google 云盘导出需要访问以下 HTTPS 地址（TCP 443）。如果代理采用域名分流，请确认 **`www.googleapis.com` 走可访问 Google 的线路**；浏览器能打开 Google 首页，不代表这些 API 地址已被代理。本机 Excel 导出无需网络。
 
-下表来自当前代码，`{fileId}` / `{spreadsheetId}` 是运行时生成的文件 ID；省略了 `fields`、`q` 等查询参数。
+下表来自云盘导出代码，`{fileId}` 是运行时生成的文件 ID；省略了 `fields`、`q` 等查询参数。历史 Sheets 接口记录见 [旧功能文档](docs/google-sheets.md)。
 
 | 用途 | 方法 | 请求 URL |
 | --- | --- | --- |
 | 核对授权账户邮箱 | GET | `https://www.googleapis.com/oauth2/v3/userinfo` |
-| 查找、创建导出表格或创建云盘文件夹 | GET / POST | `https://www.googleapis.com/drive/v3/files` |
+| 查找文件或创建云盘文件夹 | GET / POST | `https://www.googleapis.com/drive/v3/files` |
 | 读取文件归属、标记和文件夹信息 | GET | `https://www.googleapis.com/drive/v3/files/{fileId}` |
 | 为每日 CSV 及其文件夹预留 ID | GET | `https://www.googleapis.com/drive/v3/files/generateIds` |
 | 首次上传每日 CSV | POST | `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart` |
 | 更新已有每日 CSV | PATCH | `https://www.googleapis.com/upload/drive/v3/files/{fileId}?uploadType=media` |
-| 读取表格工作表及网格信息 | GET | `https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}` |
-| 更新导出表格内容 | POST | `https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}:batchUpdate` |
 
 Google 登录和授权由 **Google Play 服务**处理，内部请求地址由 SDK 决定。代理还需覆盖 Google 账户及 OAuth 域名，例如 `accounts.google.com`、`oauth2.googleapis.com`；登录页面资源也可能使用 `gstatic.com`、`googleusercontent.com` 的子域名。这些是授权相关的排查域名，并非本应用已抓包验证的完整请求清单，参见 [Google OAuth 端点说明](https://developers.google.com/identity/openid-connect/reference)和 [Android 官方网络要求](https://support.google.com/work/android/answer/10513641?hl=en)。
 
-如果使用**按应用代理**，请检查 OpenWallet（`io.openwallet.demo`）、Google Play 服务（`com.google.android.gms`）和授权所用浏览器是否被漏掉。点击「打开表格 / 打开云盘文件夹」还会通过外部应用访问 `https://docs.google.com/spreadsheets/d/{fileId}/edit` 或 `https://drive.google.com/drive/folders/{folderId}`，相应域名也需要可达。
+如果使用**按应用代理**，请检查 OpenWallet（`io.openwallet.demo`）、Google Play 服务（`com.google.android.gms`）和授权所用浏览器是否被漏掉。点击「打开云盘文件夹」还会通过外部应用访问 `https://drive.google.com/drive/folders/{folderId}`，相应域名也需要可达。
 
 排查时可短暂切换代理的全局模式，对比授权和导出是否恢复，再检查连接记录中的直连、拒绝或超时项并补齐分流规则。Android 端代理需要在手机或模拟器中生效；下文的 Gradle 代理参数只影响电脑上的构建下载。代理也不能解决设备未安装 Google Play 服务或 OAuth 包名 / 签名配置错误。
 
