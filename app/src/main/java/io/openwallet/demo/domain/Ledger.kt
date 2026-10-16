@@ -43,7 +43,7 @@ object Duplicates {
         // Android may update the same visible notification with a later timestamp. A reused slot is
         // reviewable rather than silently discarded, since it can also represent a real new payment.
         val identity = notificationIdentity(entry)
-        if (notifications && entry.accountId == other.accountId && identity != null && identity == notificationIdentity(other)) return true
+        if (notifications && identity != null && identity == notificationIdentity(other)) return true
         if (kotlin.math.abs(entry.time - other.time) > 120_000) return false
         // A wallet payment and the funding bank's debit can refer to the same expense on different accounts.
         return (entry.accountId == other.accountId && (entry.source != other.source || notifications)) ||

@@ -54,6 +54,19 @@ class LedgerTest {
         val closer = bank.copy(id = 3, time = candidate.time)
         assertEquals(closer, Duplicates.relatedPostedNotification(candidate, listOf(bank, closer)))
     }
+    @Test fun sameNotificationIdentityRemainsReviewableAcrossMappingsAndTimeWindows() {
+        val bank = entry.copy(id = 1, source = "通知·招商银行", externalId = "notification:cmb.pb:slot:${entry.time}")
+        val updatedTime = bank.time + 180_000
+        val update = bank.copy(id = 2, accountId = 2, time = updatedTime,
+            externalId = "notification:cmb.pb:slot:$updatedTime", pending = true)
+        assertEquals(Match.POSSIBLE, Duplicates.classify(update, listOf(bank)))
+        assertEquals(Match.POSSIBLE, Duplicates.classify(bank, listOf(update)))
+        assertEquals(bank, Duplicates.relatedPostedNotification(update, listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(update.copy(externalId = "notification:cmb.pb:other:$updatedTime"), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(update.copy(amount = bank.amount + 1), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(update.copy(direction = Direction.INCOME), listOf(bank)))
+        assertEquals(Match.NEW, Duplicates.classify(update.copy(source = "CSV"), listOf(bank)))
+    }
     @Test fun notificationIgnoresOtherAppsFailuresAndOtp() {
         val pkg = "com.eg.android.AlipayGphone"
         assertNull(NotificationParser.parse("unrelated.app", "支付成功 28.50元", 1, 1, "1"))

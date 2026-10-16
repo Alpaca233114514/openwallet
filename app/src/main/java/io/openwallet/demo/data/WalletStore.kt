@@ -24,10 +24,12 @@ class WalletStore internal constructor(context: Context, databaseName: String = 
         check(oldVersion == 1 && newVersion == 2) { "需要数据库迁移 $oldVersion → $newVersion" }
         db.execSQL("ALTER TABLE entries ADD COLUMN auto_post_at INTEGER NOT NULL DEFAULT 0")
     }
-    @Synchronized fun snapshot(): WalletState {
-        val entries = readableDatabase.rawQuery("SELECT * FROM entries WHERE pending <> 2 ORDER BY occurred_at DESC,id DESC", null).use { c ->
+    private fun readEntries(where: String = "pending <> 2"): List<Entry> =
+        readableDatabase.rawQuery("SELECT * FROM entries WHERE $where ORDER BY occurred_at DESC,id DESC", null).use { c ->
             buildList { while (c.moveToNext()) add(Entry(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3), Direction.valueOf(c.getString(4)), c.getString(5), c.getString(6), c.getString(7), c.getString(8), c.getInt(9) == 1, c.getLong(10))) }
         }
+    @Synchronized fun snapshot(): WalletState {
+        val entries = readEntries()
         val accounts = readableDatabase.rawQuery("SELECT * FROM accounts ORDER BY id", null).use { c ->
             buildList { while (c.moveToNext()) {
                 val id = c.getLong(0); val baseline = c.getLong(2); val asOf = c.getLong(3)
@@ -82,12 +84,9 @@ class WalletStore internal constructor(context: Context, databaseName: String = 
             // Include dismissed notifications and all accounts: changing a mapping must not replay an old event.
             val alreadyReceived = db.rawQuery("SELECT 1 FROM entries WHERE external_id=? AND source LIKE '通知%'", arrayOf(entry.externalId)).use { it.moveToFirst() }
             if (!alreadyReceived) {
-                val nearbyNotification = db.rawQuery(
-                    "SELECT 1 FROM entries WHERE account_id=? AND source LIKE '通知%' AND amount=? AND direction=? AND occurred_at BETWEEN ? AND ?",
-                    arrayOf(entry.accountId.toString(), entry.amount.toString(), entry.direction.name, (entry.time - 120_000).toString(), (entry.time + 120_000).toString())
-                ).use { it.moveToFirst() }
-                val match = Duplicates.classify(entry, snapshot().entries)
-                val post = autoPost && !nearbyNotification && match == Match.NEW
+                // Dismissed candidates remain deduplication history even though the ledger hides them.
+                val match = Duplicates.classify(entry, readEntries("1=1"))
+                val post = autoPost && match == Match.NEW
                 val buffered = post && postAt > 0
                 write(db, entry.copy(pending = !post || buffered, autoPostAt = if (buffered) postAt else 0))
                 result = if (buffered) CaptureResult.BUFFERED else if (post) CaptureResult.AUTO_POSTED else CaptureResult.PENDING_REVIEW
@@ -106,7 +105,9 @@ class WalletStore internal constructor(context: Context, databaseName: String = 
         db.beginTransaction()
         try {
             val entries = snapshot().entries
-            val seen = entries.filterNot { it.pending }.toMutableList()
+            // Include ignored history in the final check too, including buffers saved by older versions.
+            // These rows are used only for matching; snapshot() still excludes dismissed candidates.
+            val seen = readEntries("pending <> 1").toMutableList()
             entries.filter { it.pending && it.autoPostAt in 1..now }.sortedWith(compareBy<Entry> { it.autoPostAt }.thenBy { it.id }).forEach { e ->
                 val post = Duplicates.classify(e, seen) == Match.NEW
                 db.update("entries", ContentValues().apply { put("auto_post_at", 0); put("pending", if (post) 0 else 1) }, "id=?", arrayOf(e.id.toString()))
