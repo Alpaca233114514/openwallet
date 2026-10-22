@@ -27,8 +27,7 @@ fun SettingsScreen(
     onImport: () -> Unit,
     onExport: () -> Unit,
     onCapture: () -> Unit,
-    onSheets: () -> Unit,
-    onDrive: () -> Unit,
+    onExcel: () -> Unit,
     updates: UpdateViewModel = viewModel(),
 ) {
     val result by updates.result.collectAsStateWithLifecycle()
@@ -67,12 +66,10 @@ fun SettingsScreen(
             }
         }
         item {
-            SettingsGroup("自动记账与云端导出") {
+            SettingsGroup("自动记账与导出") {
                 SettingsRow(Icons.Rounded.NotificationsNone, "通知自动记账", onCapture)
                 HorizontalDivider(Modifier.padding(horizontal = 18.dp))
-                SettingsRow(Icons.Rounded.CloudUpload, "Google Sheets 自动导出", onSheets)
-                HorizontalDivider(Modifier.padding(horizontal = 18.dp))
-                SettingsRow(Icons.Rounded.Folder, "Google 云盘每日 CSV", onDrive)
+                SettingsRow(Icons.Rounded.Description, "Excel 自动导出", onExcel)
             }
         }
         item {

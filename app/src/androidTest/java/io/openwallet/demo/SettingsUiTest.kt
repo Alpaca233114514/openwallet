@@ -46,6 +46,7 @@ class SettingsUiTest {
         rule.onNodeWithTag("settings-screen").assertIsDisplayed()
         screenshot("settings")
         rule.onNodeWithText("导入银行流水").assertIsDisplayed()
+        rule.onNodeWithText("Google 云盘每日 CSV").assertDoesNotExist()
         rule.onNodeWithText("记一笔").assertDoesNotExist()
         rule.onNodeWithText("通知自动记账").performClick()
         rule.onNodeWithText("读取交易通知").assertIsDisplayed()
@@ -56,6 +57,27 @@ class SettingsUiTest {
         rule.onNodeWithTag("settings-screen").assertIsDisplayed()
         InstrumentationRegistry.getInstrumentation().runOnMainSync { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.onNodeWithText("添加第一个账户").assertIsDisplayed()
+    }
+
+    @Test fun emptyLedgerImportCanAddAccountAndReturnToFileSelection() {
+        val ledger = WalletStore(context, databaseName).also { store = it }
+        rule.runOnUiThread {
+            val vm = WalletViewModel(context.applicationContext as Application, ledger)
+            models.put("ledger", vm)
+            rule.activity.setContent { WalletTheme { WalletApp(vm) } }
+        }
+        rule.onNodeWithContentDescription("设置").performClick()
+        rule.onNodeWithText("导入银行流水").performClick()
+        rule.onNodeWithText("添加账户").assertIsEnabled().performClick()
+        rule.onNodeWithText("取消").performClick()
+        rule.onNodeWithText("导入银行流水").assertIsDisplayed()
+        rule.onNodeWithText("添加账户").performClick()
+        rule.onNodeWithText("账户名称").performTextInput("导入账户")
+        rule.onNodeWithText("当前余额（元）").performTextInput("123.45")
+        rule.onNodeWithText("保存余额").performClick()
+        rule.waitUntil(5_000) { ledger.snapshot().accounts.size == 1 }
+        rule.onNodeWithText("选择 CSV 文件").assertIsEnabled()
+        assertEquals(12345L, ledger.snapshot().accounts.single().balance)
     }
 
     @Test fun updateCanRetryAndSurviveSettingsReentry() {
@@ -112,7 +134,7 @@ class SettingsUiTest {
     private fun showSettings(vm: UpdateViewModel) {
         rule.runOnUiThread {
             if (models["updates"] !== vm) models.put("updates", vm)
-            rule.activity.setContent { WalletTheme { SettingsScreen({}, {}, {}, {}, {}, vm) } }
+            rule.activity.setContent { WalletTheme { SettingsScreen({}, {}, {}, {}, vm) } }
         }
     }
     private fun screenshot(name: String) {

@@ -63,8 +63,8 @@ internal fun FloatingNavigationBar(
                     drawLayer(glass)
                 })
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
-                Color.White.copy(alpha = if (supportsBlur) .76f else .95f),
-                MaterialTheme.colorScheme.surface.copy(alpha = if (supportsBlur) .60f else .92f),
+                Color.White.copy(alpha = if (supportsBlur) .38f else .80f),
+                MaterialTheme.colorScheme.surface.copy(alpha = if (supportsBlur) .24f else .72f),
             ))))
             NavigationBar(
                 modifier = Modifier.height(72.dp),

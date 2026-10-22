@@ -2,7 +2,6 @@ package io.openwallet.demo.ui
 
 import android.content.Intent
 import android.provider.Settings
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -50,7 +49,6 @@ private val Expense = Color(0xFFB76B4D)
     val busy by vm.busy.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = settingsOpen) { settingsOpen = false }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var editAccount by remember { mutableStateOf<Account?>(null) }
     var candidate by remember { mutableStateOf<Entry?>(null) }
@@ -58,29 +56,34 @@ private val Expense = Color(0xFFB76B4D)
     LaunchedEffect(candidate?.id, currentCandidate?.id) { if (candidate != null && currentCandidate == null) candidate = null }
     var postedNotification by remember { mutableStateOf<Entry?>(null) }
     val snack = remember { SnackbarHostState() }
-    val backdrop = rememberGraphicsLayer()
     val layoutDirection = LocalLayoutDirection.current
-    var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::import) }
     val exportFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let(vm::export) }
     LaunchedEffect(message) { message?.let { snack.showSnackbar(it); vm.message.value = null } }
+    WalletNavigation(
+        settingsOpen = settingsOpen,
+        backEnabled = dialog == null && preview == null && currentCandidate == null && postedNotification == null,
+        onBack = { settingsOpen = false },
+    ) { showSettings ->
+    val backdrop = rememberGraphicsLayer()
+    var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         topBar = { TopAppBar(title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!settingsOpen) Icon(Icons.Rounded.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary)
-                Text(if (settingsOpen) "设置" else "OpenWallet", fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                if (!showSettings) Icon(Icons.Rounded.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary)
+                Text(if (showSettings) "设置" else "OpenWallet", fontWeight = FontWeight.Bold, fontSize = 22.sp)
             }
         }, navigationIcon = {
-            if (settingsOpen) IconButton(onClick = { settingsOpen = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回账本") }
+            if (showSettings) IconButton(onClick = { settingsOpen = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回账本") }
         }, actions = {
-            if (!settingsOpen) IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Rounded.Settings, "设置") }
+            if (!showSettings) IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Rounded.Settings, "设置") }
         }) },
         bottomBar = {
-            if (!settingsOpen) FloatingNavigationBar(selectedTab = tab, onTab = { tab = it }, backdrop = backdrop, backdropOrigin = backdropOrigin)
+            if (!showSettings) FloatingNavigationBar(selectedTab = tab, onTab = { tab = it }, backdrop = backdrop, backdropOrigin = backdropOrigin)
         },
         floatingActionButton = {
-            if (!settingsOpen && state.accounts.isNotEmpty()) ExtendedFloatingActionButton(onClick = { dialog = "entry" }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("记一笔") }, containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
+            if (!showSettings && state.accounts.isNotEmpty()) ExtendedFloatingActionButton(onClick = { dialog = "entry" }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("记一笔") }, containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
         }
     ) { padding ->
         // Let the list scroll behind the floating glass; its trailing padding keeps the last row reachable.
@@ -97,28 +100,42 @@ private val Expense = Color(0xFFB76B4D)
             }
             .background(MaterialTheme.colorScheme.background)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (settingsOpen) SettingsScreen(
+            if (showSettings) SettingsScreen(
                 onImport = { dialog = "importHelp" },
                 onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") },
-                onCapture = { dialog = "capture" }, onSheets = { dialog = "sheets" }, onDrive = { dialog = "drive" },
+                onCapture = { dialog = "capture" }, onExcel = { dialog = "excel" },
             )
             else if (state.accounts.isEmpty()) EmptyWallet(onAccount = { dialog = "account" }, onDemo = vm::demo, busy = busy)
-            else if (tab == 0) AssetsScreen(state, onAdd = { dialog = "account" }, onEdit = { editAccount = it; dialog = "account" }, onImport = { dialog = "importHelp" }, onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") })
-            else TransactionsScreen(state, onCandidate = { candidate = it }, onNotification = { postedNotification = it }, onImport = { dialog = "importHelp" })
+            else WalletTabContent(tab) { selected ->
+                if (selected == 0) AssetsScreen(state, onAdd = { dialog = "account" }, onEdit = { editAccount = it; dialog = "account" }, onImport = { dialog = "importHelp" }, onExport = { exportFile.launch("openwallet-${LocalDate.now()}.csv") })
+                else TransactionsScreen(state, onCandidate = { candidate = it }, onNotification = { postedNotification = it }, onImport = { dialog = "importHelp" })
+            }
         }
     }
+    }
     if (dialog == "account") AccountDialog(editAccount, dismiss = { dialog = null; editAccount = null }) { name, balance -> vm.account(name, balance, editAccount?.id); dialog = null; editAccount = null }
+    if (dialog == "importAccount") AccountDialog(null, dismiss = { dialog = "importHelp" }) { name, balance ->
+        vm.account(name, balance)
+        dialog = "importHelp"
+    }
     if (dialog == "entry") EntryDialog(state.accounts, dismiss = { dialog = null }, save = { vm.add(it); dialog = null })
     if (dialog == "capture") CaptureDialog(state.accounts) { dialog = null }
-    if (dialog == "sheets") SheetsDialog { dialog = null }
-    if (dialog == "drive") DriveDialog { dialog = null }
+    if (dialog == "excel") ExcelDialog { dialog = null }
     if (dialog == "importHelp") AlertDialog(onDismissRequest = { dialog = null }, title = { Text("导入银行流水") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("将银行导出的流水整理为 UTF-8 CSV，并先在资产页添加同名账户。")
             Text("时间,账户,类型,金额,交易方,分类,流水号", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             Text("时间格式：2026-10-15 12:30:00\n类型：收入 / 支出；金额填正数。\n流水号可留空，疑似重复项默认不选。")
         }
-    }, confirmButton = { Button(enabled = state.accounts.isNotEmpty(), onClick = { dialog = null; importFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) { Text("选择 CSV 文件") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
+    }, confirmButton = {
+        Button(onClick = {
+            if (state.accounts.isEmpty()) dialog = "importAccount"
+            else {
+                dialog = null
+                importFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream"))
+            }
+        }) { Text(if (state.accounts.isEmpty()) "添加账户" else "选择 CSV 文件") }
+    }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
     preview?.let { rows -> ImportDialog(rows, busy, { vm.preview.value = null }, vm::importSelected) }
     currentCandidate?.let { entry -> CandidateDialog(entry, state, dismiss = { candidate = null }) { accept, account, allow -> vm.resolve(entry, accept, account, allow); candidate = null } }
     postedNotification?.let { entry -> AlertDialog(onDismissRequest = { postedNotification = null }, title = { Text("通知记账") }, text = {

@@ -162,8 +162,7 @@ class WalletStore internal constructor(context: Context, databaseName: String = 
     companion object {
         @Volatile private var instance: WalletStore? = null
         fun get(context: Context): WalletStore = instance ?: synchronized(this) { instance ?: WalletStore(context.applicationContext, onChanged = {
-            io.openwallet.demo.export.SheetsScheduler.changed(context.applicationContext)
-            io.openwallet.demo.export.DriveScheduler.changed(context.applicationContext)
+            io.openwallet.demo.export.ExcelScheduler.changed(context.applicationContext)
         }).also { instance = it } }
     }
 }

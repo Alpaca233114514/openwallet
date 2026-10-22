@@ -1,5 +1,7 @@
 # Google Sheets 自动导出
 
+> 历史功能说明：2026-10-16 起，该入口已替换为[本机 Excel 自动导出](excel-export.md)。升级后取消旧 Sheets 后台任务，保留已有云端表格与账户元数据；下文仅保留原实现的配置记录。
+
 ## 一次性 Google Cloud 配置
 
 1. 在 [Google Cloud Console](https://console.cloud.google.com/) 创建或选择自己的项目，启用 **Google Sheets API** 和 **Google Drive API**。

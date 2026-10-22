@@ -33,7 +33,7 @@ class UpdateConnectivityTest {
         val vm = UpdateViewModel(context.applicationContext as Application, checker)
         val started = System.currentTimeMillis()
         try {
-            rule.runOnUiThread { rule.activity.setContent { WalletTheme { SettingsScreen({}, {}, {}, {}, {}, vm) } } }
+            rule.runOnUiThread { rule.activity.setContent { WalletTheme { SettingsScreen({}, {}, {}, {}, vm) } } }
             rule.onNodeWithTag("check-updates").performScrollTo().performClick()
             rule.waitUntil(45_000) { vm.result.value != UpdateResult.Checking && vm.result.value != UpdateResult.Idle }
             rule.onNodeWithTag("check-updates").performScrollTo().assertIsEnabled()
